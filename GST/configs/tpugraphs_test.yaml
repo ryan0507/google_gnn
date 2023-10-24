@@ -1,4 +1,6 @@
-out_dir: tests/results_xla
+out_dir: tests/results
+pretrained:
+  dir: tests/results_xla/tpugraphs
 dataset:
   name: TPUGraphs
   format: PyG-TPUGraphs
@@ -7,10 +9,11 @@ dataset:
   transductive: False
 train:
   mode: custom_tpu
-  batch_size: 32
+  batch_size: 1
   eval_period: 1
   ckpt_period: 100
   sampler: full_batch
+  epoch_resume: 3799
 model:
   type: custom_tpu_gnn
   loss_fun: cross_entropy
@@ -34,4 +37,4 @@ optim:
   max_epoch: 20000
 share:
   dim_in: 286
-device: cuda
+device: cpu

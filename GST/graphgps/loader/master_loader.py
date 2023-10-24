@@ -109,7 +109,9 @@ def load_dataset_master(format, name, dataset_dir):
             dataset = preformat_MalNetLarge(dataset_dir, feature_set=name)
             
         elif pyg_dataset_id == 'TPUGraphs':
-            dataset = preformat_TPUGraphs(dataset_dir)
+            # source_id = format.split('-')[2]
+            # search_id = format.split('-')[3]
+            dataset = preformat_TPUGraphs(dataset_dir, 'xla', 'random')
 
         elif pyg_dataset_id == 'Planetoid':
             dataset = Planetoid(dataset_dir, name)
@@ -318,9 +320,9 @@ def preformat_MalNetLarge(dataset_dir, feature_set):
 
     return dataset
 
-def preformat_TPUGraphs(dataset_dir):
+def preformat_TPUGraphs(dataset_dir, source = 'nlp', search = 'random'):
    
-    dataset = TPUGraphs(dataset_dir)
+    dataset = TPUGraphs(dataset_dir, source=source, search=search)
     dataset.name = 'TPUGraphs'
     
     split_dict = dataset.get_idx_split()

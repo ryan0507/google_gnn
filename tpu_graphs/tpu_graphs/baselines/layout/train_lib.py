@@ -94,7 +94,9 @@ def train(args: train_args.TrainArgs):
   # Input training data.
   data_root_dir = os.path.join(
       os.path.expanduser(_DATA_ROOT.value), args.source, args.search)
-  num_configs = args.configs
+  # num_configs = args.configs
+  num_configs = 5
+  
   dataset_partitions = data.get_npz_dataset(
       data_root_dir, min_train_configs=num_configs,
       max_train_configs=args.max_configs,

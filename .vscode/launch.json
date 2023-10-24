@@ -11,8 +11,13 @@
             "program": "${file}",
             "console": "integratedTerminal",
             "justMyCode": true,
-            "args":["--cfg",
-        "configs/tpugraphs_test.yaml"]
+            "args": [
+                "--cfg",
+                "configs/tpugraphs_test.yaml"
+            ],
+            "env": {
+                "CUDA_VISIBLE_DEVICES": "1,"
+            }
         }
     ]
 }

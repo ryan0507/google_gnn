@@ -29,9 +29,9 @@ import torch_geometric.nn as tnn
 from torch_sparse import SparseTensor
 from torch_geometric.data import Data
 from tqdm import tqdm
-import pandas as pd
 import numpy as np
 import scipy
+import pandas as pd
 
 from graphgps.finetuning import load_pretrained_model_cfg, \
     init_model_from_pretrained
@@ -140,8 +140,7 @@ def preprocess_batch(batch, model, num_sample_configs):
     batch_list = batch.to_data_list()
     processed_batch_list = []
     for g in batch_list:
-        # sample_idx = torch.randint(0, g.num_config.item(), (num_sample_configs,))
-        sample_idx = torch.arange(0, num_sample_configs)
+        sample_idx = torch.randint(0, g.num_config.item(), (num_sample_configs,))
         g.y = g.y[sample_idx]
         g.config_feats = g.config_feats.view(g.num_config, g.num_config_idx, -1)[sample_idx, ...]
         g.config_feats = g.config_feats.transpose(0,1)
@@ -149,22 +148,20 @@ def preprocess_batch(batch, model, num_sample_configs):
         g.config_feats_full[g.config_idx, ...] += g.config_feats
         g.adj = SparseTensor(row=g.edge_index[0], col=g.edge_index[1], sparse_sizes=(g.num_nodes, g.num_nodes))
         processed_batch_list.append(g)
-    return Batch.from_data_list(processed_batch_list) , sample_idx
+    return Batch.from_data_list(processed_batch_list), sample_idx
 
 @torch.no_grad()
 def eval_epoch(logger, loader, model, split='val'):
     model.eval()
     time_start = time.time()
-    global_cnt = 0 
-    for cnt, batch in tqdm(enumerate(loader)):
-        num_sample_config = len(batch.y)
-        batch, sample_idx= preprocess_batch(batch, model, num_sample_config)
+    num_sample_config = 32
+    for cnt, batch in enumerate(loader):
+        batch, _ = preprocess_batch(batch, model, num_sample_config)
         batch.split = split
         true = batch.y
         batch_list = batch.to_data_list()
-        batch_seg_list = []
+        batch_seg = []
         batch_num_parts = []
-        cnt = 0
         for i in range(len(batch_list)):
             num_parts = len(batch_list[i].partptr) - 1
             batch_num_parts.append(num_parts)
@@ -192,60 +189,53 @@ def eval_epoch(logger, loader, model, split='val'):
                 data.edge_index = torch.stack([row, col], dim=0)
                 for k in range(len(data.y)):
                     unfold_g = Data(edge_index=data.edge_index, op_feats=data.op_feats, op_code=data.op_code, config_feats=data.config_feats_full[:, k, :], num_nodes=length)
-                    if cnt % 32 == 0:
-                        batch_seg_list.append([])
-                    batch_seg_list[-1].append(unfold_g)
-        res_list = []
-        for batch_seg in batch_seg_list:
-            batch_seg = Batch.from_data_list(batch_seg)
-            batch_seg.to(torch.device(cfg.device))
-            true = true.to(torch.device(cfg.device))
-            # more preprocessing
-            batch_seg.op_emb = model.emb(batch_seg.op_code.long())
-            batch_seg.x = torch.cat((batch_seg.op_feats, batch_seg.op_emb * model.op_weights, batch_seg.config_feats * model.config_weights), dim=-1)
-            batch_seg.x = model.linear_map(batch_seg.x)
-        
-            module_len = len(list(model.model.children()))
-            for i, module in enumerate(model.model.children()):
-                if i < module_len - 1:
-                    batch_seg = module(batch_seg)
-                if i == module_len - 1:
-                    batch_seg_embed = tnn.global_max_pool(batch_seg.x, batch_seg.batch) + tnn.global_mean_pool(batch_seg.x, batch_seg.batch)
-            graph_embed = batch_seg_embed / torch.norm(batch_seg_embed, dim=-1, keepdim=True)
-            for i, module in enumerate(model.model.children()):
-                if i == module_len - 1:
-                    res = module.layer_post_mp(graph_embed)
-                    res_list.append(res)
-        res_list = torch.cat(res_list, dim=0)
-        pred = torch.zeros(1, len(data.y), 1).to(torch.device(cfg.device))
+                    batch_seg.append(unfold_g)
+        batch_seg = Batch.from_data_list(batch_seg)
+        batch_seg.to(torch.device(cfg.device))
+        true = true.to(torch.device(cfg.device))
+        # more preprocessing
+        # batch_train.config_feats = model.config_feats_transform(batch_train.config_feats)
+        batch_seg.op_emb = model.emb(batch_seg.op_code.long())
+        # batch_train.op_feats = model.op_feats_transform(batch_train.op_feats)
+        batch_seg.x = torch.cat((batch_seg.op_feats, model.op_weights * batch_seg.op_emb, batch_seg.config_feats * model.config_weights), dim=-1)
+        batch_seg.x = model.linear_map(batch_seg.x)
+       
+        module_len = len(list(model.model.children()))
+        for i, module in enumerate(model.model.children()):
+            if i < module_len - 1:
+                batch_seg = module(batch_seg)
+            if i == module_len - 1:
+                batch_seg_embed = tnn.global_max_pool(batch_seg.x, batch_seg.batch) + tnn.global_mean_pool(batch_seg.x, batch_seg.batch)
+        graph_embed = batch_seg_embed / torch.norm(batch_seg_embed, dim=-1, keepdim=True)
+        for i, module in enumerate(model.model.children()):
+            if i == module_len - 1:
+                res = module.layer_post_mp(graph_embed)
+        pred = torch.zeros(len(loader.dataset), len(data.y), 1).to(torch.device(cfg.device))
         part_cnt = 0
         for i, num_parts in enumerate(batch_num_parts):
             for _ in range(num_parts):
                 for j in range(num_sample_config):
-                    pred[i, j, :] += res_list[part_cnt, :]
+                    pred[i, j, :] += res[part_cnt, :]
                     part_cnt += 1
-        pred = pred.view(num_sample_config)
-        df = pd.DataFrame(pred)
-        df.to_csv(f'pred_{global_cnt}.csv', index = False)
-        true = true.view(num_sample_config)
-        pred_rank = torch.argsort(pred, dim=-1, descending=False)
-        true_rank = torch.argsort(true, dim=-1, descending=False)
-        pred_rank = pred_rank.cpu().numpy()
-        df2 = pd.DataFrame(pred_rank)
-        df2.to_csv(f'pred_rank_{global_cnt}.csv', index = False)
+        batch_num_parts = torch.Tensor(batch_num_parts).to(torch.device(cfg.device))
+        batch_num_parts = batch_num_parts.view(-1, 1)
+        extra_stats = {}
         
-        true_rank = true_rank.cpu().numpy()
-        true = true.cpu().numpy()
-        err_1 = (true[pred_rank[0]] - true[true_rank[0]]) / true[true_rank[0]]
-        err_10 = (np.min(true[pred_rank[:10]]) - true[true_rank[0]]) / true[true_rank[0]]
-        err_100 = (np.min(true[pred_rank[:100]]) - true[true_rank[0]]) / true[true_rank[0]]
-        print('top 1 err: ' + str(err_1))
-        print('top 10 err: ' + str(err_10))
-        print('top 100 err: ' + str(err_100))
-        print("kendall:" + str(scipy.stats.kendalltau(pred_rank, true_rank).correlation))
+        pred = pred.view(-1, num_sample_config)
+        true = true.view(-1, num_sample_config)
+        loss = pairwise_hinge_loss_batch(pred, true)
+        _true = true.detach().to('cpu', non_blocking=True)
+        _pred = pred.detach().to('cpu', non_blocking=True)
+        df = pd.DataFrame(_pred)
+        df.to_csv(f'pred_{i}.csv', index = False)
+        logger.update_stats(true=_true,
+                            pred=_pred,
+                            loss=loss.detach().cpu().item(),
+                            lr=0, time_used=time.time() - time_start,
+                            params=cfg.params,
+                            dataset_name=cfg.dataset.name,
+                            **extra_stats)
         time_start = time.time()
-        global_cnt += 1
-
 
 if __name__ == '__main__':
     # Load cmd line args
@@ -266,6 +256,7 @@ if __name__ == '__main__':
         cfg.run_id = run_id
         seed_everything(cfg.seed)
         auto_select_device()
+        cfg.pretrained.dir = "tests/results/tpugraphs"
         if cfg.pretrained.dir:
             cfg = load_pretrained_model_cfg(cfg)
         logging.info(f"[*] Run ID {run_id}: seed={cfg.seed}, "
@@ -274,7 +265,7 @@ if __name__ == '__main__':
         # Set machine learning pipeline
         model = create_model()
         model = TPUModel(model)
-        model = model.to(torch.device(cfg.device))
+        model = model.to(cfg.device)
         optimizer = create_optimizer(model.parameters(),
                                      new_optimizer_config(cfg))
         scheduler = create_scheduler(optimizer, new_scheduler_config(cfg))

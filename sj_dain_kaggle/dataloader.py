@@ -39,7 +39,7 @@ class TPUGraphs(InMemoryDataset):
 
     @property
     def processed_file_names(self) -> List[str]:
-        return [f'{self.source}_{self.search}_data_segment_{self.thres}.pt', f'{self.source}_{self.search}_split_dict_segment_{self.thres}.pt']
+        return ['data_segment_{}.pt'.format(self.thres), 'split_dict_segment_{}.pt'.format(self.thres)]
 
 
     def process(self):

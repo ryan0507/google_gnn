@@ -82,6 +82,7 @@ def get_parameter_sweep_1() -> list[train_args.TrainArgs]:
               args['learning_rate'] = lr
               args['run_id'] = run_id
               args['batch_size'] = batch
+              args['results_csv'] = f"{run_id}_{batch}_{lr}_{model}.csv"
               all_args.append(train_args.TrainArgs(**args))
 
   return all_args
@@ -94,6 +95,7 @@ def _run_args(args: dict[str, str | float | int]):
 def pipeline(root) -> beam.pvalue.PCollection:
   train_arg_list = get_parameter_sweep_1()
   if _DEBUG.value:
+    print(train_arg_list)
     train_arg_list = train_arg_list[:2]
   train_arg_list = [args._asdict() for args in train_arg_list]
   return (

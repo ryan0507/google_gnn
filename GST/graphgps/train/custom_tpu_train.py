@@ -59,7 +59,7 @@ def train_epoch(logger, loader, model, optimizer, scheduler, emb_table, batch_ac
     model.train()
     optimizer.zero_grad()
     time_start = time.time()
-    num_sample_config = 32
+    num_sample_config = 2000
     for iter, batch in enumerate(loader):
         batch, sampled_idx = preprocess_batch(batch, model, num_sample_config)
         batch.to(torch.device(cfg.device))

@@ -1,4 +1,4 @@
-out_dir: tests/results_xla
+out_dir: tests/results_xla_random
 dataset:
   name: TPUGraphs
   format: PyG-TPUGraphs
@@ -7,9 +7,10 @@ dataset:
   transductive: False
 train:
   mode: custom_tpu
-  batch_size: 32
+  batch_size: 1
   eval_period: 1
-  ckpt_period: 100
+  ckpt_period: 1
+  ckpt_best: True
   sampler: full_batch
 model:
   type: custom_tpu_gnn
