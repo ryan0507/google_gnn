@@ -1,5 +1,5 @@
 import torch
-from torch_geometric.graphgym.models.layer import SAGEConv, new_layer_config
+from torch_geometric.graphgym.models.layer import SAGEConv, new_layer_config, GATConv
 import torch_geometric.graphgym.models.head  # noqa, register module
 import torch_geometric.graphgym.register as register
 from torch_geometric.graphgym.config import cfg
@@ -47,6 +47,8 @@ class CustomGNN(torch.nn.Module):
             return GINEConvLayer
         elif model_type == 'sageconv':
             return SAGEConv
+        elif model_type == 'gatconv':
+            return GATConv
         else:
             raise ValueError("Model {} unavailable".format(model_type))
 

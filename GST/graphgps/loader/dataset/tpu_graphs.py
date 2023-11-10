@@ -39,7 +39,7 @@ class TPUGraphs(InMemoryDataset):
 
     @property
     def processed_file_names(self) -> List[str]:
-        return [f'{self.source}_{self.search}_data_segment_{self.thres}.pt', f'{self.source}_{self.search}_split_dict_segment_{self.thres}.pt']
+        return [f'{self.source}_{self.search}_data_segment_{self.thres}_nodup.pt', f'{self.source}_{self.search}_split_dict_segment_{self.thres}_nodup.pt']
 
 
     def process(self):
@@ -57,10 +57,26 @@ class TPUGraphs(InMemoryDataset):
                     if "edge_index" not in np_file:
                       print('error in', filename)
                     edge_index = torch.tensor(np_file["edge_index"].T)
+                    # Set if we want to add reverse edge
+                    # edge_index = to_undirected(edge_index)
+
+                    shape = np_file["node_config_feat"].shape
+                    print(f"Before preprocessing: {shape}")
+                    
+                    if split_name == 'train' or split_name == 'valid':
+                        print(f'{split_name} Dataset, Erase Duplicate configurations')
+                        preprocess_config_feats, uni_idx = np.unique(np_file["node_config_feat"], axis=0, return_index = True)
+                        np_file["node_config_feat"] = preprocess_config_feats
+                        
+                    
                     runtime = torch.tensor(np_file["config_runtime"])
+                    if split_name == 'train' or split_name == 'valid':
+                        runtime = torch.tensor(runtime[uni_idx])
+                        
                     op = torch.tensor(np_file["node_feat"])
                     op_code = torch.tensor(np_file["node_opcode"])
                     config_feats = torch.tensor(np_file["node_config_feat"])
+                    processed_shape = config_feats.size()
                     config_feats = config_feats.view(-1, config_feats.shape[-1])
                     config_idx = torch.tensor(np_file["node_config_ids"])
                     num_config = torch.tensor(np_file["node_config_feat"].shape[0])
@@ -69,6 +85,11 @@ class TPUGraphs(InMemoryDataset):
                     num_parts = num_nodes // self.thres + 1
                     interval = num_nodes // num_parts
                     partptr = torch.arange(0, num_nodes, interval+1)
+                    runtime_shape = runtime.size()
+                    
+                    print(f"After duplicated values new_runtime: {runtime_shape}")
+                    print(f"After duplicated values config: {processed_shape}")
+                    
                     if partptr[-1] != num_nodes:
                         partptr = torch.cat([partptr, torch.tensor([num_nodes])])
                     data = Data(edge_index=edge_index, op_feats=op, op_code=op_code, config_feats=config_feats, config_idx=config_idx,
@@ -82,5 +103,5 @@ class TPUGraphs(InMemoryDataset):
         return torch.load(self.processed_paths[1])
 
 if __name__ == '__main__':
-    dataset = TPUGraphs(root='datasets/TPUGraphs')
-    import pdb; pdb.set_trace()
+    dataset = TPUGraphs(root='datasets/TPUGraphs', source = 'xla', search = 'random')
+    # import pdb; pdb.set_trace()

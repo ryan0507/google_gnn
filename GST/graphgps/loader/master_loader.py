@@ -17,6 +17,7 @@ from torch_geometric.graphgym.register import register_loader
 from graphgps.loader.dataset.malnet_tiny import MalNetTiny
 from graphgps.loader.dataset.malnet_large import MalNetLarge
 from graphgps.loader.dataset.tpu_graphs import TPUGraphs
+from graphgps.loader.dataset.tpu_graphs_nipa import TPUGraphsSplit
 from graphgps.loader.split_generator import (prepare_splits,
                                              set_dataset_splits)
 from graphgps.transform.posenc_stats import compute_posenc_stats
@@ -111,8 +112,14 @@ def load_dataset_master(format, name, dataset_dir):
         elif pyg_dataset_id == 'TPUGraphs':
             # source_id = format.split('-')[2]
             # search_id = format.split('-')[3]
+            # dataset = preformat_TPUGraphs(dataset_dir, 'nlp', 'default')
+            
             dataset = preformat_TPUGraphs(dataset_dir, 'xla', 'random')
-
+            # dataset = preformat_TPUGraphs(dataset_dir, 'xla', 'default')
+            
+        elif pyg_dataset_id == 'TPUGraphsSplit':
+            dataset = preformat_TPUGraphs_split(dataset_dir, 'xla','random')
+        
         elif pyg_dataset_id == 'Planetoid':
             dataset = Planetoid(dataset_dir, name)
 
@@ -159,7 +166,7 @@ def load_dataset_master(format, name, dataset_dir):
             raise ValueError(f"Unsupported OGB(-derived) dataset: {name}")
     else:
         raise ValueError(f"Unknown data format: {format}")
-    log_loaded_dataset(dataset, format, name)
+    # log_loaded_dataset(dataset, format, name)
 
     # Precompute necessary statistics for positional encodings.
     pe_enabled_list = []
@@ -323,6 +330,18 @@ def preformat_MalNetLarge(dataset_dir, feature_set):
 def preformat_TPUGraphs(dataset_dir, source = 'nlp', search = 'random'):
    
     dataset = TPUGraphs(dataset_dir, source=source, search=search)
+    dataset.name = 'TPUGraphs'
+    
+    split_dict = dataset.get_idx_split()
+    dataset.split_idxs = [split_dict['train'],
+                          split_dict['valid'],
+                          split_dict['test']]
+
+    return dataset
+
+def preformat_TPUGraphs_split(dataset_dir, source = 'nlp', search = 'random'):
+   
+    dataset = TPUGraphsSplit(dataset_dir, source=source, search=search)
     dataset.name = 'TPUGraphs'
     
     split_dict = dataset.get_idx_split()
